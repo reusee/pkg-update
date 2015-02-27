@@ -53,6 +53,13 @@ func main() {
 		return nil
 	})
 
+	printer := make(chan string)
+	go func() {
+		for s := range printer {
+			print(s)
+		}
+	}()
+
 	wg := new(sync.WaitGroup)
 	wg.Add(len(dirs))
 	sem := make(chan struct{}, parallel)
@@ -64,12 +71,11 @@ func main() {
 				wg.Done()
 				<-sem
 			}()
-			pt("updating %s\n", dir)
 			err = os.Chdir(dir)
 			checkErr(sp("change dir to %s", path), err)
 			output, err := exec.Command("git", "pull").CombinedOutput()
 			checkErr(sp("run git pull in dir %s", dir), err)
-			pt("%s", output)
+			printer <- sp("%s: %s", dir, output)
 		}()
 	}
 	wg.Wait()
