@@ -3,12 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-ini/ini"
 )
 
 var (
@@ -32,12 +36,12 @@ func main() {
 		}
 	}
 
-	path := os.Getenv("GOPATH")
-	path, err := filepath.Abs(path)
+	gopath := os.Getenv("GOPATH")
+	gopath, err := filepath.Abs(gopath)
 	checkErr("get absolute path of GOPATH", err)
 
 	dirs := []string{}
-	filepath.Walk(filepath.Join(path, "src"), func(path string, info os.FileInfo, err error) error {
+	filepath.Walk(filepath.Join(gopath, "src"), func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -46,6 +50,21 @@ func main() {
 		}
 		base := filepath.Base(path)
 		if base == ".git" {
+			configPath := filepath.Join(path, "config")
+			configContent, err := ioutil.ReadFile(configPath)
+			checkErr(sp("get config file content %s", configPath), err)
+			config, err := ini.Load(configContent, configPath)
+			checkErr(sp("load config %s", configPath), err)
+			hasRemote := false
+			for _, name := range config.SectionStrings() {
+				if strings.HasPrefix(name, "remote ") {
+					hasRemote = true
+				}
+			}
+			if !hasRemote {
+				pt("no remote %s\n", path)
+				return nil
+			}
 			dir := filepath.Dir(path)
 			dirs = append(dirs, dir)
 			return filepath.SkipDir
@@ -72,7 +91,7 @@ func main() {
 				<-sem
 			}()
 			err = os.Chdir(dir)
-			checkErr(sp("change dir to %s", path), err)
+			checkErr(sp("change dir to %s", dir), err)
 			output, err := exec.Command("git", "pull").CombinedOutput()
 			checkErr(sp("run git pull in dir %s", dir), err)
 			printer <- sp("%s: %s", dir, output)
